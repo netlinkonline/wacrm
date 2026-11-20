@@ -34,6 +34,8 @@ export function AccountSwitcher() {
       const rows = payload.accounts ?? [];
       setAccounts(rows);
       setActiveId(rows.find((row) => row.active)?.id ?? null);
+    } catch (error) {
+      console.error("[AccountSwitcher] could not load organizations:", error);
     } finally {
       setLoading(false);
     }
