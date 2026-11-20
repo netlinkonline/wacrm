@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronsUpDown, Plus, UsersRound } from "lucide-react";
 
@@ -72,7 +72,7 @@ export function AccountSwitcher() {
     }
   }
 
-  async function createAccount(event: React.FormEvent<HTMLFormElement>) {
+  async function createAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (creating) return;
     setCreating(true);
