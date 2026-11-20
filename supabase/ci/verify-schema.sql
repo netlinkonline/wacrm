@@ -190,6 +190,13 @@ BEGIN
        NOT LIKE '%account_memberships%' THEN
     RAISE EXCEPTION 'new-user bootstrap does not create an account membership — migration 063 did not apply';
   END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'whp_audit_membership_change'
+      AND NOT tgisinternal
+  ) THEN
+    RAISE EXCEPTION 'membership audit trigger is missing — migration 062 did not apply';
+  END IF;
 
   RAISE NOTICE 'schema verification passed';
 END
