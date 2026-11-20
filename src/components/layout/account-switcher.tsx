@@ -25,6 +25,10 @@ export function AccountSwitcher() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [switching, setSwitching] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -68,6 +72,36 @@ export function AccountSwitcher() {
     }
   }
 
+  async function createAccount(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (creating) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const response = await fetch("/api/account/organizations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        accountId?: string;
+        error?: string;
+      };
+      if (!response.ok || !payload.accountId) {
+        throw new Error(payload.error ?? "Could not create organization");
+      }
+      setCreateOpen(false);
+      setNewName("");
+      setActiveId(payload.accountId);
+      await loadAccounts();
+      router.refresh();
+    } catch (error) {
+      setCreateError(error instanceof Error ? error.message : "Could not create organization");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   if (loading || accounts.length === 0) return null;
 
   const active = accounts.find((account) => account.id === activeId) ?? accounts[0];
@@ -108,12 +142,48 @@ export function AccountSwitcher() {
             </DropdownMenuItem>
           ))}
           <DropdownMenuSeparator />
-          <DropdownMenuItem disabled>
+          <DropdownMenuItem onClick={() => setCreateOpen(true)}>
             <Plus className="size-4" />
-            Create organization (coming soon)
+            Create organization
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      {createOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !creating) setCreateOpen(false);
+        }}>
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="create-organization-title"
+            onSubmit={createAccount}
+            className="w-full max-w-md space-y-4 rounded-xl border border-border bg-card p-5 shadow-xl"
+          >
+            <div>
+              <h2 id="create-organization-title" className="text-base font-semibold text-foreground">Create organization</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Create a separate workspace for another business or team.</p>
+            </div>
+            <label className="block space-y-1.5 text-sm font-medium text-foreground">
+              Organization name
+              <input
+                autoFocus
+                required
+                minLength={2}
+                maxLength={120}
+                value={newName}
+                onChange={(event) => setNewName(event.target.value)}
+                placeholder="e.g. Example Company"
+                className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-primary"
+              />
+            </label>
+            {createError && <p role="alert" className="text-sm text-destructive">{createError}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" disabled={creating} onClick={() => setCreateOpen(false)} className="rounded-lg border border-border px-3 py-2 text-sm text-foreground hover:bg-muted disabled:opacity-50">Cancel</button>
+              <button type="submit" disabled={creating || newName.trim().length < 2} className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50">{creating ? "Creating…" : "Create organization"}</button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
