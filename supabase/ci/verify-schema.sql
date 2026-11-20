@@ -182,7 +182,8 @@ BEGIN
   IF to_regprocedure('public.create_account_invitation(uuid,text,account_role_enum,timestamp with time zone,text)') IS NULL
      OR to_regprocedure('public.set_account_member_role(uuid,uuid,account_role_enum)') IS NULL
      OR to_regprocedure('public.remove_account_membership(uuid,uuid)') IS NULL
-     OR to_regprocedure('public.transfer_account_membership_ownership(uuid,uuid)') IS NULL THEN
+     OR to_regprocedure('public.transfer_account_membership_ownership(uuid,uuid)') IS NULL
+     OR to_regprocedure('public.create_account_for_user(text)') IS NULL THEN
     RAISE EXCEPTION 'WHP membership RPCs are missing — migration 062 did not apply';
   END IF;
   IF pg_get_functiondef('public.handle_new_user()'::regprocedure)
