@@ -219,21 +219,34 @@ export async function POST(request: Request) {
 
     const { token, hash } = generateInviteToken();
 
+    const { data: invitationId, error: createError } = await ctx.supabase.rpc(
+      "create_account_invitation",
+      {
+        p_account_id: ctx.accountId,
+        p_token_hash: hash,
+        p_role: role,
+        p_expires_at: expiresAt.toISOString(),
+        p_label: label,
+      },
+    );
+
+    if (createError || !invitationId) {
+      console.error("[POST /api/account/invitations] create RPC error:", createError);
+      return NextResponse.json(
+        { error: t('account.invitations.createFailed') },
+        { status: 500 },
+      );
+    }
+
     const { data, error } = await ctx.supabase
       .from("account_invitations")
-      .insert({
-        account_id: ctx.accountId,
-        token_hash: hash,
-        role,
-        created_by_user_id: ctx.userId,
-        label,
-        expires_at: expiresAt.toISOString(),
-      })
       .select("id, role, label, expires_at, created_at")
+      .eq("id", invitationId)
+      .eq("account_id", ctx.accountId)
       .single();
 
     if (error || !data) {
-      console.error("[POST /api/account/invitations] insert error:", error);
+      console.error("[POST /api/account/invitations] fetch created invitation:", error);
       return NextResponse.json(
         { error: t('account.invitations.createFailed') },
         { status: 500 },
