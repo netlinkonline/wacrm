@@ -84,7 +84,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const { error } = await ctx.supabase.rpc("transfer_account_ownership", {
+    const { error } = await ctx.supabase.rpc("transfer_account_membership_ownership", {
+      p_account_id: ctx.accountId,
       p_new_owner_user_id: newOwnerUserId,
     });
 
