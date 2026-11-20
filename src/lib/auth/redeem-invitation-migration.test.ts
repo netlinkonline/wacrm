@@ -43,22 +43,22 @@ function latestFunctionBody(functionName: string): string {
 describe("redeem_invitation migration", () => {
   const body = latestFunctionBody("redeem_invitation");
 
-  it("finds the account-scoped tables it is meant to guard", () => {
-    const tables = accountScopedTables();
-    expect(tables).toContain("contacts");
-    expect(tables).toContain("api_keys");
-    expect(tables).toContain("quick_replies");
+  it("adds the invited user to the invited organization membership", () => {
+    expect(body).toMatch(/insert\s+into\s+public\.account_memberships/i);
+    expect(body).toMatch(/account_id,\s*user_id,\s*role,\s*status/i);
+    expect(body).toMatch(/v_inv\.account_id,\s*v_user,\s*v_inv\.role,\s*'active'/i);
   });
 
-  it("checks every account-scoped table for data before deleting the old account", () => {
-    const missing = [...accountScopedTables()]
-      .filter((table) => !tablesWithoutDomainData.has(table))
-      .filter((table) => !new RegExp(`from\\s+${table}\\s+where\\s+account_id\\s*=\\s*v_old_account_id`, "i").test(body));
-    expect(missing).toEqual([]);
+  it("allows a user to retain memberships in multiple organizations", () => {
+    expect(body).toMatch(/account_memberships[\s\S]*?where\s+account_id\s*=\s*v_inv\.account_id\s+and\s+user_id\s*=\s*v_user/i);
+    expect(body).toMatch(/on\s+conflict\s*\(account_id,\s*user_id\)\s+do\s+update/i);
+    expect(body).toMatch(/do\s+not\s+move\/delete\s+the\s+user's\s+existing\s+account/i);
   });
 
-  it("refuses when the old account has other members", () => {
-    expect(body).toMatch(/from\s+profiles\s+where\s+account_id\s*=\s*v_old_account_id\s+and\s+user_id\s*<>\s*v_caller_id/i);
+  it("does not delete or migrate the user's existing account data", () => {
+    expect(body).not.toMatch(/delete\s+from\s+public\.accounts/i);
+    expect(body).not.toMatch(/delete\s+from\s+public\.(contacts|tags|conversations|messages)/i);
+    expect(body).not.toMatch(/update\s+public\.profiles\s+set\s+account_id/i);
   });
 });
 
