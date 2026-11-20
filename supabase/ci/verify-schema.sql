@@ -1,3 +1,4 @@
+-- CI trigger verification: this comment-only change intentionally exercises the migration workflow.
 -- Post-migration assertions for the CI job in
 -- `.github/workflows/migrations.yml`.
 --
