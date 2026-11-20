@@ -175,6 +175,9 @@ BEGIN
   IF to_regclass('public.idx_accounts_one_per_owner') IS NOT NULL THEN
     RAISE EXCEPTION 'legacy one-account-per-owner restriction remains — migration 061 did not apply';
   END IF;
+  IF to_regclass('public.idx_account_memberships_one_active_owner') IS NULL THEN
+    RAISE EXCEPTION 'one-active-owner membership constraint is missing — migration 061 did not apply';
+  END IF;
   IF pg_get_functiondef('public.is_account_member(uuid,account_role_enum)'::regprocedure)
        NOT LIKE '%account_memberships%' THEN
     RAISE EXCEPTION 'is_account_member does not authorize through account_memberships — migration 061 did not apply';
