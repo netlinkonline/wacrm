@@ -49,7 +49,16 @@ export async function GET() {
 
   const roleByAccount = new Map(validMemberships.map((membership) => [membership.account_id, membership.role]));
   const cookieStore = await cookies();
-  const selectedId = cookieStore.get(ACTIVE_ACCOUNT_COOKIE)?.value ?? null;
+  let selectedId = cookieStore.get(ACTIVE_ACCOUNT_COOKIE)?.value ?? null;
+
+  if (!selectedId) {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("account_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    selectedId = profile?.account_id ?? null;
+  }
 
   return NextResponse.json({
     accounts: (accounts ?? []).map((account) => ({
