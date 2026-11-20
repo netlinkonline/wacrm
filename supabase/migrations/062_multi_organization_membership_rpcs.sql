@@ -220,11 +220,13 @@ BEGIN
   IF p_new_owner_user_id = auth.uid() THEN
     RAISE EXCEPTION 'You are already the owner' USING ERRCODE = '22023';
   END IF;
-  IF NOT EXISTS (
-    SELECT 1 FROM public.account_memberships
-    WHERE account_id = p_account_id AND user_id = p_new_owner_user_id AND status = 'active'
-    FOR UPDATE
-  ) THEN
+  PERFORM 1
+  FROM public.account_memberships
+  WHERE account_id = p_account_id
+    AND user_id = p_new_owner_user_id
+    AND status = 'active'
+  FOR UPDATE;
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'New owner must be an active organization member' USING ERRCODE = '22023';
   END IF;
 
