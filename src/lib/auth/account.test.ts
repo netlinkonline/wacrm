@@ -66,6 +66,12 @@ vi.mock("@/lib/supabase/server", () => ({
   createClient: () => createClient(),
 }));
 
+vi.mock("next/headers", () => ({
+  cookies: async () => ({
+    get: () => undefined,
+  }),
+}));
+
 const { getCurrentAccount, UnauthorizedError, ForbiddenError } = await import(
   "./account"
 );
