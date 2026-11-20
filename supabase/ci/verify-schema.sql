@@ -1,3 +1,4 @@
+-- CI trigger verification: this comment-only change intentionally exercises the migration workflow.
 -- Post-migration assertions for the CI job in
 -- `.github/workflows/migrations.yml`.
 --
@@ -161,6 +162,44 @@ BEGIN
   END IF;
   IF has_function_privilege('anon', 'public.dashboard_overview(integer,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'anon can execute dashboard_overview — migration 059 grants are wrong';
+  END IF;
+
+  -- WHP SaaS tenant foundation (061-063).
+  IF to_regclass('public.account_memberships') IS NULL
+     OR to_regclass('public.whp_platform_roles') IS NULL
+     OR to_regclass('public.whp_plans') IS NULL
+     OR to_regclass('public.whp_subscriptions') IS NULL
+     OR to_regclass('public.whp_usage_ledger') IS NULL
+     OR to_regclass('public.whp_audit_logs') IS NULL THEN
+    RAISE EXCEPTION 'WHP SaaS foundation tables are missing — migrations 061/062 did not apply';
+  END IF;
+  IF to_regclass('public.idx_accounts_one_per_owner') IS NOT NULL THEN
+    RAISE EXCEPTION 'legacy one-account-per-owner restriction remains — migration 061 did not apply';
+  END IF;
+  IF to_regclass('public.idx_account_memberships_one_active_owner') IS NULL THEN
+    RAISE EXCEPTION 'one-active-owner membership constraint is missing — migration 061 did not apply';
+  END IF;
+  IF pg_get_functiondef('public.is_account_member(uuid,account_role_enum)'::regprocedure)
+       NOT LIKE '%account_memberships%' THEN
+    RAISE EXCEPTION 'is_account_member does not authorize through account_memberships — migration 061 did not apply';
+  END IF;
+  IF to_regprocedure('public.create_account_invitation(uuid,text,account_role_enum,timestamp with time zone,text)') IS NULL
+     OR to_regprocedure('public.set_account_member_role(uuid,uuid,account_role_enum)') IS NULL
+     OR to_regprocedure('public.remove_account_membership(uuid,uuid)') IS NULL
+     OR to_regprocedure('public.transfer_account_membership_ownership(uuid,uuid)') IS NULL
+     OR to_regprocedure('public.create_account_for_user(text)') IS NULL THEN
+    RAISE EXCEPTION 'WHP membership RPCs are missing — migration 062 did not apply';
+  END IF;
+  IF pg_get_functiondef('public.handle_new_user()'::regprocedure)
+       NOT LIKE '%account_memberships%' THEN
+    RAISE EXCEPTION 'new-user bootstrap does not create an account membership — migration 063 did not apply';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'whp_audit_membership_change'
+      AND NOT tgisinternal
+  ) THEN
+    RAISE EXCEPTION 'membership audit trigger is missing — migration 062 did not apply';
   END IF;
 
   RAISE NOTICE 'schema verification passed';

@@ -26,6 +26,7 @@
 // ============================================================
 
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/server";
@@ -117,27 +118,57 @@ export async function getCurrentAccount(): Promise<AccountContext> {
     throw new UnauthorizedError();
   }
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("account_id, account_role")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  // The selected account cookie is only a selector, never an
+  // authorization credential. Its value is revalidated against the
+  // authenticated user's active account_memberships row on every request.
+  const cookieStore = await cookies();
+  const selectedAccountId = cookieStore.get("wacrm_active_account")?.value;
 
-  if (error) {
-    console.error("[getCurrentAccount] profile fetch error:", error);
-    throw new ForbiddenError(t("loadContext"));
+  let accountId: string | null = null;
+  let accountRole: unknown = null;
+
+  if (selectedAccountId) {
+    const { data: membership, error: membershipError } = await supabase
+      .from("account_memberships")
+      .select("account_id, role")
+      .eq("account_id", selectedAccountId)
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (membershipError) {
+      console.error("[getCurrentAccount] membership fetch error:", membershipError);
+      throw new ForbiddenError(t("loadContext"));
+    }
+    if (!membership) {
+      // Do not silently fall back to another tenant when a selected
+      // membership has been revoked or the cookie was tampered with.
+      throw new ForbiddenError(t("notLinked"));
+    }
+    accountId = membership.account_id;
+    accountRole = membership.role;
+  } else {
+    // Compatibility fallback for users who have not selected an
+    // organization yet and for deployments before the switcher ships.
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("account_id, account_role")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("[getCurrentAccount] profile fetch error:", profileError);
+      throw new ForbiddenError(t("loadContext"));
+    }
+    if (!profile || !profile.account_id || !profile.account_role) {
+      throw new ForbiddenError(t("notLinked"));
+    }
+    accountId = profile.account_id;
+    accountRole = profile.account_role;
   }
-  if (!data || !data.account_id || !data.account_role) {
-    // Pre-migration profile, or a manual insert that skipped the
-    // signup trigger. The user is authenticated but the app has
-    // no way to scope their queries — treat as forbidden.
+
+  if (!accountId || !isAccountRole(accountRole)) {
     throw new ForbiddenError(t("notLinked"));
-  }
-  if (!isAccountRole(data.account_role)) {
-    // The DB enum should make this impossible, but a future
-    // migration that broadens the enum without updating TS would
-    // hit this — surface it rather than silently widening.
-    throw new ForbiddenError(`Unknown account role: ${data.account_role}`);
   }
 
   // Load the account with a plain point lookup by id rather than an
@@ -153,7 +184,7 @@ export async function getCurrentAccount(): Promise<AccountContext> {
   const { data: account, error: accountErr } = await supabase
     .from("accounts")
     .select("id, name")
-    .eq("id", data.account_id)
+    .eq("id", accountId)
     .maybeSingle();
 
   if (accountErr) {
@@ -169,8 +200,8 @@ export async function getCurrentAccount(): Promise<AccountContext> {
   return {
     supabase,
     userId: user.id,
-    accountId: data.account_id,
-    role: data.account_role,
+    accountId,
+    role: accountRole,
     account: { id: account.id, name: account.name },
   };
 }

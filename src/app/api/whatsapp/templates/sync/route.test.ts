@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+vi.mock('next/headers', () => ({
+  cookies: vi.fn(async () => ({ get: vi.fn(() => undefined) })),
+}))
+
 const templateUpdates: { patch: Record<string, unknown>; id: unknown }[] = []
 const templateInserts: Record<string, unknown>[] = []
 let localTemplates: { id: string }[] = []

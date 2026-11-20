@@ -5,8 +5,8 @@
 //   DELETE — remove a member.          Admin+.
 //
 // Both delegate to SECURITY DEFINER RPCs from migration 018:
-//   - set_member_role(p_user_id, p_new_role)
-//   - remove_account_member(p_user_id)
+//   - set_account_member_role(p_account_id, p_user_id, p_new_role)
+//   - remove_account_membership(p_account_id, p_user_id)
 //
 // The RPCs do the *real* authorisation work — caller must be
 // admin+, target must be in caller's account, target can't be the
@@ -84,7 +84,8 @@ export async function PATCH(
       );
     }
 
-    const { error } = await ctx.supabase.rpc("set_member_role", {
+    const { error } = await ctx.supabase.rpc("set_account_member_role", {
+      p_account_id: ctx.accountId,
       p_user_id: userId,
       p_new_role: role,
     });
@@ -112,7 +113,8 @@ export async function DELETE(
 
     const { userId } = await params;
 
-    const { data, error } = await ctx.supabase.rpc("remove_account_member", {
+    const { data, error } = await ctx.supabase.rpc("remove_account_membership", {
+      p_account_id: ctx.accountId,
       p_user_id: userId,
     });
 

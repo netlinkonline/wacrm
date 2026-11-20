@@ -1,10 +1,9 @@
 // ============================================================
 // POST /api/invitations/[token]/redeem
 //
-// Authenticated. Caller atomically moves from their personal
-// account (created at signup) to the inviter's account with the
-// invite's role. Heavy lifting lives in the SECURITY DEFINER
-// `redeem_invitation` RPC from migration 019.
+// Authenticated. Caller joins the invited organization as an additional
+// membership; their existing workspace and data remain untouched. Heavy
+// lifting lives in the SECURITY DEFINER `redeem_invitation` RPC.
 //
 // Refusal contract (from the RPC)
 //   - SQLSTATE 42501 → 401 (caller not authenticated)
@@ -83,5 +82,17 @@ export async function POST(
 
   if (error) return rpcErrorToResponse(error);
 
-  return NextResponse.json({ ok: true, accountId });
+  if (typeof accountId !== "string") {
+    return NextResponse.json({ error: t('invitations.redeemFailed') }, { status: 500 });
+  }
+
+  const response = NextResponse.json({ ok: true, accountId });
+  response.cookies.set("wacrm_active_account", accountId, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+  return response;
 }
