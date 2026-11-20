@@ -304,3 +304,60 @@ $$;
 ALTER FUNCTION public.create_account_for_user(TEXT) OWNER TO postgres;
 REVOKE ALL ON FUNCTION public.create_account_for_user(TEXT) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.create_account_for_user(TEXT) TO authenticated;
+
+
+-- Central audit capture for membership changes, including RPCs and
+-- auth.users bootstrap. The trigger is installed after migration 061's
+-- historical membership backfill so old rows are not logged as new.
+CREATE OR REPLACE FUNCTION public.whp_audit_membership_change()
+RETURNS TRIGGER
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_account_id UUID;
+  v_user_id UUID;
+  v_actor UUID := auth.uid();
+  v_before JSONB;
+  v_after JSONB;
+  v_action TEXT;
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    v_account_id := OLD.account_id;
+    v_user_id := OLD.user_id;
+    v_before := jsonb_build_object('role', OLD.role, 'status', OLD.status);
+    v_action := 'membership.removed';
+  ELSIF TG_OP = 'UPDATE' THEN
+    v_account_id := NEW.account_id;
+    v_user_id := NEW.user_id;
+    v_before := jsonb_build_object('role', OLD.role, 'status', OLD.status);
+    v_after := jsonb_build_object('role', NEW.role, 'status', NEW.status);
+    v_action := 'membership.updated';
+  ELSE
+    v_account_id := NEW.account_id;
+    v_user_id := NEW.user_id;
+    v_after := jsonb_build_object('role', NEW.role, 'status', NEW.status);
+    v_action := 'membership.added';
+  END IF;
+
+  INSERT INTO public.whp_audit_logs(
+    account_id, actor_user_id, actor_scope, action, target_type, target_id,
+    before_data, after_data
+  ) VALUES (
+    v_account_id, v_actor,
+    CASE WHEN v_actor IS NULL THEN 'system' ELSE 'tenant' END,
+    v_action, 'account_membership', v_user_id::text,
+    v_before, v_after
+  );
+
+  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+  RETURN NEW;
+END;
+$$;
+
+ALTER FUNCTION public.whp_audit_membership_change() OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.whp_audit_membership_change() FROM PUBLIC, anon, authenticated;
+DROP TRIGGER IF EXISTS whp_audit_membership_change ON public.account_memberships;
+CREATE TRIGGER whp_audit_membership_change
+  AFTER INSERT OR UPDATE OR DELETE ON public.account_memberships
+  FOR EACH ROW EXECUTE FUNCTION public.whp_audit_membership_change();
