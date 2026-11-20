@@ -62,13 +62,18 @@ function makeClient(opts: {
 }
 
 const createClient = vi.fn();
+const { mockActiveAccountCookie } = vi.hoisted(() => ({
+  mockActiveAccountCookie: { value: undefined as string | undefined },
+}));
 vi.mock("@/lib/supabase/server", () => ({
   createClient: () => createClient(),
 }));
 
 vi.mock("next/headers", () => ({
   cookies: async () => ({
-    get: () => undefined,
+    get: () => mockActiveAccountCookie.value
+      ? { value: mockActiveAccountCookie.value }
+      : undefined,
   }),
 }));
 
@@ -77,6 +82,7 @@ const { getCurrentAccount, UnauthorizedError, ForbiddenError } = await import(
 );
 
 afterEach(() => {
+  mockActiveAccountCookie.value = undefined;
   vi.clearAllMocks();
 });
 
@@ -110,6 +116,63 @@ describe("getCurrentAccount", () => {
     expect(calls[0].eqArgs).toEqual([["user_id", "user-1"]]);
     expect(calls[1].columns).not.toMatch(/accounts!/);
     expect(calls[1].eqArgs).toEqual([["id", "acct-1"]]);
+  });
+
+ 
+  it("resolves a selected organization only through the caller's active membership", async () => {
+    mockActiveAccountCookie.value = "acct-2";
+    const { client, calls } = makeClient({
+      user: { id: "user-1" },
+      byTable: {
+        account_memberships: {
+          data: { account_id: "acct-2", role: "agent" },
+          error: null,
+        },
+        accounts: {
+          data: { id: "acct-2", name: "Second organization" },
+          error: null,
+        },
+      },
+    });
+    createClient.mockReturnValue(client);
+
+    const ctx = await getCurrentAccount();
+
+    expect(ctx).toMatchObject({
+      userId: "user-1",
+      accountId: "acct-2",
+      role: "agent",
+      account: { id: "acct-2", name: "Second organization" },
+    });
+    expect(calls.map((call) => call.table)).toEqual([
+      "account_memberships",
+      "accounts",
+    ]);
+    expect(calls[0].eqArgs).toEqual([
+      ["account_id", "acct-2"],
+      ["user_id", "user-1"],
+      ["status", "active"],
+    ]);
+  });
+
+  it("does not fall back to the default account when a selected membership is invalid", async () => {
+    mockActiveAccountCookie.value = "acct-not-authorized";
+    const { client, calls } = makeClient({
+      user: { id: "user-1" },
+      byTable: {
+        account_memberships: { data: null, error: null },
+        profiles: {
+          data: { account_id: "acct-1", account_role: "owner" },
+          error: null,
+        },
+      },
+    });
+    createClient.mockReturnValue(client);
+
+    await expect(getCurrentAccount()).rejects.toThrow(
+      "Profile is not linked to an account",
+    );
+    expect(calls.map((call) => call.table)).toEqual(["account_memberships"]);
   });
 
   it("throws UnauthorizedError when there is no session", async () => {
