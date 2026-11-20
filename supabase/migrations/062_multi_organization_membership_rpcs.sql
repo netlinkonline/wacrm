@@ -264,3 +264,43 @@ GRANT EXECUTE ON FUNCTION public.redeem_invitation(TEXT) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.set_account_member_role(UUID,UUID,public.account_role_enum) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.remove_account_membership(UUID,UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.transfer_account_membership_ownership(UUID,UUID) TO authenticated;
+
+
+CREATE OR REPLACE FUNCTION public.create_account_for_user(
+  p_name TEXT
+) RETURNS UUID
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_user UUID := auth.uid();
+  v_account_id UUID;
+  v_name TEXT := trim(COALESCE(p_name, ''));
+BEGIN
+  IF v_user IS NULL THEN
+    RAISE EXCEPTION 'Unauthorized' USING ERRCODE = '42501';
+  END IF;
+  IF length(v_name) < 2 OR length(v_name) > 120 THEN
+    RAISE EXCEPTION 'Organization name must contain 2 to 120 characters' USING ERRCODE = '22023';
+  END IF;
+
+  INSERT INTO public.accounts(name, owner_user_id)
+  VALUES (v_name, v_user)
+  RETURNING id INTO v_account_id;
+
+  INSERT INTO public.account_memberships(account_id,user_id,role,status,joined_at)
+  VALUES (v_account_id,v_user,'owner','active',now());
+
+  INSERT INTO public.whp_audit_logs(
+    account_id,actor_user_id,actor_scope,action,target_type,target_id
+  ) VALUES (
+    v_account_id,v_user,'tenant','organization.created','account',v_account_id::text
+  );
+
+  RETURN v_account_id;
+END;
+$$;
+
+ALTER FUNCTION public.create_account_for_user(TEXT) OWNER TO postgres;
+REVOKE ALL ON FUNCTION public.create_account_for_user(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.create_account_for_user(TEXT) TO authenticated;
