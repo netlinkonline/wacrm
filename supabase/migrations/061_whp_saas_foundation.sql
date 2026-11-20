@@ -35,6 +35,12 @@ CREATE INDEX IF NOT EXISTS idx_account_memberships_user_status
 CREATE INDEX IF NOT EXISTS idx_account_memberships_account_status
   ON public.account_memberships(account_id, status);
 
+-- Exactly one active owner per organization. Ownership transfer demotes
+-- the current owner before promoting the new one in the same transaction.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_account_memberships_one_active_owner
+  ON public.account_memberships(account_id)
+  WHERE status = 'active' AND role = 'owner';
+
 -- Backfill current single-account membership without changing profiles.
 INSERT INTO public.account_memberships
   (account_id, user_id, role, status, joined_at)
