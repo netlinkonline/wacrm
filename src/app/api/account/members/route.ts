@@ -21,15 +21,6 @@ import { getT } from "@/lib/i18n/translate";
 
 const t = getT("Api");
 
-interface ProfileRow {
-  user_id: string;
-  full_name: string | null;
-  email: string | null;
-  avatar_url: string | null;
-  account_role: string;
-  created_at: string;
-}
-
 export async function GET() {
   try {
     const ctx = await getCurrentAccount();
